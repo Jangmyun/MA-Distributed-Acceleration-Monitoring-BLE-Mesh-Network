@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import type { Severity } from '../types';
 
 /* ─────────────────────────────────────────────────────────
-   MotorSim  —  Three.js 3D 모터-축-디스크 어셈블리
-   PRD §4.1 씬 구성 / §4.2 제어 루프 / §4.3 이상 시나리오
-   W1 범위: 씬 구조 + 회전 애니메이션 + 심각도별 시각 반응
-   W3 이후: wsClient.ts → setRPM() / setSeverity() 연동
+   MotorSim  —  Three.js 3D motor-shaft-disk assembly
+   PRD §4.1 Scene layout / §4.2 Control loop / §4.3 Anomaly scenarios
+   W1 scope: scene structure + rotation animation + severity-based visuals
+   W3 onwards: wsClient.ts → setRPM() / setSeverity() integration
 ───────────────────────────────────────────────────────── */
 
-/** 심각도별 외형 설정 */
+/** Visual style per severity level */
 const SEVERITY_STYLE: Record<Severity, {
   diskColor: number;
   diskEmissive: number;
@@ -21,7 +21,7 @@ const SEVERITY_STYLE: Record<Severity, {
   critical: { diskColor: 0xf85149, diskEmissive: 0x200000, lightColor: 0xf85149, weightOpacity: 1.0, jitterScale: 0.04  },
 };
 
-/** PRD §3.3.3 심각도별 목표 RPM */
+/** Target RPM per severity level (PRD §3.3.3) */
 export const SEVERITY_RPM: Record<Severity, number> = {
   normal:   1200,
   warning:  600,
@@ -44,7 +44,7 @@ export class MotorSim {
   private matWeight!:     THREE.MeshStandardMaterial;
   private diskLight!:     THREE.PointLight;
 
-  private angle       = 0;   // 누적 회전각 (rad)
+  private angle       = 0;   // Accumulated rotation angle (rad)
   private jitterScale = 0;
   private cameraOrigin!: THREE.Vector3;
   private clock = new THREE.Clock();
@@ -73,7 +73,7 @@ export class MotorSim {
     this._watchResize();
   }
 
-  /* ── 공개 제어 API ── */
+  /* ── Public control API ── */
 
   setRPM(rpm: number): void {
     this.targetRPM = Math.max(0, rpm);
@@ -96,15 +96,15 @@ export class MotorSim {
     this.renderer.dispose();
   }
 
-  /* ── 씬 오브젝트 구성 (PRD §4.1) ── */
+  /* ── Scene object construction (PRD §4.1) ── */
 
   private _buildScene(): void {
-    // 바닥 그리드
+    // Floor grid
     const grid = new THREE.GridHelper(10, 20, 0x1c2333, 0x1c2333);
     grid.position.y = -1.8;
     this.scene.add(grid);
 
-    // 재질
+    // Materials
     const matHousing = new THREE.MeshStandardMaterial({ color: 0x2d3748, metalness: 0.7, roughness: 0.3 });
     const matShaft   = new THREE.MeshStandardMaterial({ color: 0x718096, metalness: 0.9, roughness: 0.2 });
     const matCap     = new THREE.MeshStandardMaterial({ color: 0x1a2535, metalness: 0.8, roughness: 0.2 });
@@ -123,11 +123,11 @@ export class MotorSim {
       transparent: true, opacity: 0,
     });
 
-    // ── 회전 그룹 (축 + 디스크 + 불균형 추) ──
+    // ── Rotating group (shaft + disk + imbalance weight) ──
     this.rotatingGroup = new THREE.Group();
     this.scene.add(this.rotatingGroup);
 
-    // 모터 하우징 — 고정 (CylinderGeometry, PRD §4.1)
+    // Motor housing — fixed body (CylinderGeometry, PRD §4.1)
     this.motorHousing = new THREE.Mesh(
       new THREE.CylinderGeometry(0.75, 0.75, 1.0, 48),
       matHousing,
@@ -136,7 +136,7 @@ export class MotorSim {
     this.motorHousing.receiveShadow = true;
     this.scene.add(this.motorHousing);
 
-    // 엔드 캡
+    // End caps
     const capGeo = new THREE.CylinderGeometry(0.76, 0.76, 0.06, 48);
     [-0.53, 0.53].forEach(y => {
       const cap = new THREE.Mesh(capGeo, matCap);
@@ -144,7 +144,7 @@ export class MotorSim {
       this.scene.add(cap);
     });
 
-    // 냉각 핀 8개
+    // Cooling fins (x8)
     const finGeo = new THREE.BoxGeometry(0.06, 0.9, 0.14);
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
@@ -154,7 +154,7 @@ export class MotorSim {
       this.scene.add(fin);
     }
 
-    // 회전축 (shaft) — CylinderGeometry thin, PRD §4.1
+    // Rotation shaft — thin CylinderGeometry (PRD §4.1)
     const shaft = new THREE.Mesh(
       new THREE.CylinderGeometry(0.06, 0.06, 3.0, 16),
       matShaft,
@@ -162,7 +162,7 @@ export class MotorSim {
     shaft.castShadow = true;
     this.rotatingGroup.add(shaft);
 
-    // 디스크 (flywheel) — CylinderGeometry flat, PRD §4.1
+    // Disk (flywheel) — flat CylinderGeometry (PRD §4.1)
     this.disk = new THREE.Mesh(
       new THREE.CylinderGeometry(1.15, 1.15, 0.18, 64),
       this.matDisk,
@@ -172,7 +172,7 @@ export class MotorSim {
     this.disk.receiveShadow = true;
     this.rotatingGroup.add(this.disk);
 
-    // 스포크 4개 (회전 시각화)
+    // Spokes x4 (rotation visualisation)
     const spokeGeo = new THREE.BoxGeometry(0.08, 0.19, 1.0);
     for (let i = 0; i < 4; i++) {
       const spoke = new THREE.Mesh(spokeGeo, matSpoke);
@@ -181,7 +181,7 @@ export class MotorSim {
       this.rotatingGroup.add(spoke);
     }
 
-    // 불균형 추 — SphereGeometry 편심 위치 (PRD §4.1, W1: 숨김)
+    // Imbalance weight — SphereGeometry at eccentric position (PRD §4.1, W1: hidden)
     const weight = new THREE.Mesh(
       new THREE.SphereGeometry(0.16, 16, 16),
       this.matWeight,
@@ -189,7 +189,7 @@ export class MotorSim {
     weight.position.set(0.9, 0.9, 0);
     this.rotatingGroup.add(weight);
 
-    // 베어링 (TorusGeometry)
+    // Bearings (TorusGeometry)
     const bearingGeo = new THREE.TorusGeometry(0.12, 0.04, 8, 24);
     [-0.5, 0.5].forEach(y => {
       const b = new THREE.Mesh(bearingGeo, matBearing);
@@ -198,13 +198,13 @@ export class MotorSim {
       this.scene.add(b);
     });
 
-    // 받침대
+    // Base plate
     const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 1.6), matBase);
     base.position.y   = -1.1;
     base.receiveShadow = true;
     this.scene.add(base);
 
-    // 볼트
+    // Mount bolts
     const boltGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.25, 8);
     ([ [-0.9, -0.5], [0.9, -0.5], [-0.9, 0.5], [0.9, 0.5] ] as [number, number][]).forEach(([x, z]) => {
       const bolt = new THREE.Mesh(boltGeo, matBolt);
@@ -213,7 +213,7 @@ export class MotorSim {
     });
   }
 
-  /* ── 조명 ── */
+  /* ── Lights ── */
 
   private _buildLights(): void {
     this.scene.add(new THREE.AmbientLight(0x1a2040, 1.5));
@@ -236,7 +236,7 @@ export class MotorSim {
     this.scene.add(this.diskLight);
   }
 
-  /* ── 애니메이션 루프 ── */
+  /* ── Animation loop ── */
 
   private _startLoop(): void {
     const loop = () => {
@@ -249,19 +249,19 @@ export class MotorSim {
   }
 
   private _tick(dt: number): void {
-    // RPM lerp: 목표값으로 부드럽게 수렴
+    // RPM lerp: smoothly converge toward target
     this.currentRPM += (this.targetRPM - this.currentRPM) * (1 - Math.pow(0.03, dt));
 
-    // 회전각 누적 (rad/s = RPM / 60 * 2π)
+    // Accumulate rotation angle (rad/s = RPM / 60 * 2π)
     this.angle += (this.currentRPM / 60) * 2 * Math.PI * dt;
     this.rotatingGroup.rotation.y = this.angle;
 
-    // 발광 강도 (RPM 비례)
+    // Emissive intensity proportional to RPM
     const t = this.currentRPM / 1200;
     this.matDisk.emissiveIntensity = 0.1 + t * 0.5;
     this.diskLight.intensity       = 0.3 + t * 0.8;
 
-    // 진동 이펙트
+    // Vibration effect
     if (this.jitterScale > 0) {
       const jx = (Math.random() - 0.5) * 2 * this.jitterScale;
       const jz = (Math.random() - 0.5) * 2 * this.jitterScale;
@@ -270,7 +270,7 @@ export class MotorSim {
         this.rotatingGroup.position.set(jx, 0, jz);
         this.motorHousing.position.set(jx * 0.6, 0, jz * 0.6);
       }
-      // 카메라 흔들림
+      // Camera shake
       const sa = this.jitterScale * 0.5;
       this.camera.position.x = this.cameraOrigin.x + (Math.random() - 0.5) * sa;
       this.camera.position.y = this.cameraOrigin.y + (Math.random() - 0.5) * sa * 0.5;
@@ -283,7 +283,7 @@ export class MotorSim {
     }
   }
 
-  /* ── 리사이즈 ── */
+  /* ── Resize ── */
 
   private _watchResize(): void {
     const ro = new ResizeObserver(() => this._resize());
