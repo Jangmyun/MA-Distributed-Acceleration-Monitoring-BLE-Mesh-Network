@@ -1,0 +1,208 @@
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-base:    #0d1117;
+  --bg-panel:   #161b22;
+  --bg-header:  #1a2030;
+  --border:     #30363d;
+  --text-main:  #e6edf3;
+  --text-muted: #8b949e;
+
+  --col-normal:   #3fb950;
+  --col-warning:  #d29922;
+  --col-critical: #f85149;
+  --col-accent:   #58a6ff;
+
+  --panel-gap: 8px;
+  --header-h:  52px;
+}
+
+html, body, #app {
+  width: 100%; height: 100%;
+  background: var(--bg-base);
+  color: var(--text-main);
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Top Control Bar ── */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: var(--header-h);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--col-accent);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.scenario-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.scenario-btn:hover           { background: #21262d; border-color: var(--col-accent); }
+.scenario-btn.active-normal   { border-color: var(--col-normal);   color: var(--col-normal);   }
+.scenario-btn.active-warning  { border-color: var(--col-warning);  color: var(--col-warning);  }
+.scenario-btn.active-critical { border-color: var(--col-critical); color: var(--col-critical); }
+
+#ws-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+#ws-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--col-critical);
+  transition: background 0.3s;
+}
+#ws-dot.connected { background: var(--col-normal); }
+
+#rpm-display {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+#rpm-display span { color: var(--col-accent); font-weight: 700; }
+
+/* ── 4-Panel Grid ── */
+#main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--panel-gap);
+  padding: var(--panel-gap);
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-title {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #21262d;
+  color: var(--col-accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.panel-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+/* ── Three.js 패널 ── */
+.motor-wrap {
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+#motor-canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#severity-overlay {
+  position: absolute;
+  top: 8px; left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+#severity-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--col-normal);
+  transition: background 0.3s;
+}
+
+#severity-text {
+  color: var(--col-normal);
+  transition: color 0.3s;
+}
+
+#target-rpm-overlay {
+  position: absolute;
+  bottom: 8px; right: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  font-size: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+#target-rpm-overlay span { color: var(--col-accent); }
