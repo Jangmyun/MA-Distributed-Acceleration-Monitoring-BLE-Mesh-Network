@@ -1,0 +1,43 @@
+/*
+ * nRF52840 DK — 1602 LCD (PCF8574 I2C backpack) overlay
+ *
+ * 하드웨어 연결
+ * ─────────────────────────────────────────────────────
+ *  LCD 모듈   │  nRF52840 DK
+ * ────────────┼────────────────────────────────────────
+ *  GND        │  GND  (예: J2 핀1)
+ *  VCC        │  VCC (3.3V → J2 핀2, 또는 5V → P22 핀3)
+ *  SDA        │  P0.26 (Arduino A4 / J3 핀7)
+ *  SCL        │  P0.27 (Arduino A5 / J3 핀8)
+ * ─────────────────────────────────────────────────────
+ *
+ * PCF8574 I2C 주소: 0x27 (A0=A1=A2=1, 기본값)
+ *                  0x3F (PCF8574AT 칩 사용 시)
+ */
+
+&pinctrl {
+	i2c0_default: i2c0_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 26)>,
+				<NRF_PSEL(TWIM_SCL, 0, 27)>;
+			bias-pull-up;
+		};
+	};
+
+	i2c0_sleep: i2c0_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 26)>,
+				<NRF_PSEL(TWIM_SCL, 0, 27)>;
+			low-power-enable;
+		};
+	};
+};
+
+&i2c0 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+};
