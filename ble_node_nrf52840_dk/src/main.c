@@ -1,66 +1,58 @@
 /*
- * 1602 LCD (PCF8574 I2C 백팩) 테스트
+ * ADXL345 가속도계 (GY-291) printk 출력 테스트
  *
- * 연결:
- *   GND → GND  (J2 핀1)
- *   VCC → 3.3V (J2 핀2) 또는 5V (P22 핀3)
- *   SDA → P0.26 (J3 핀7)
- *   SCL → P0.27 (J3 핀8)
+ * GY-291 연결:
+ *   GND  → GND  (J2 핀1)
+ *   VCC  → 3.3V (J2 핀2)
+ *   CS   → 3.3V (J2 핀2)   — I2C 모드
+ *   SDO  → GND  (J2 핀1)   — I2C 주소 0x53
+ *   SDA  → P0.26 (J3 핀7)
+ *   SCL  → P0.27 (J3 핀8)
+ *   INT1 → P1.08 (선택사항)
+ *   INT2 → P1.10 (선택사항)
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/i2c.h>
-#include <zephyr/logging/log.h>
-#include "lcd1602.h"
+#include <zephyr/drivers/sensor.h>
 
-LOG_MODULE_REGISTER(lcd_test, LOG_LEVEL_DBG);
+#define ACCEL_NODE DT_NODELABEL(adxl345)
+#define POLL_INTERVAL_MS 500
 
-#define I2C_NODE    DT_NODELABEL(i2c0)
-#define LCD_ADDR    LCD1602_DEFAULT_ADDR  /* 0x27 — 주소 다르면 0x3F 시도 */
+static inline float sv_to_f(const struct sensor_value *sv)
+{
+	return (float)sv->val1 + (float)sv->val2 * 1e-6f;
+}
 
 int main(void)
 {
-	const struct device *i2c_dev = DEVICE_DT_GET(I2C_NODE);
-	int ret;
-	int count = 0;
+	const struct device *accel = DEVICE_DT_GET(ACCEL_NODE);
 
-	if (!device_is_ready(i2c_dev)) {
-		LOG_ERR("I2C device not ready");
+	if (!device_is_ready(accel)) {
+		printk("ADXL345 not ready — 배선/주소(0x53) 확인\n");
 		return -ENODEV;
 	}
-	LOG_INF("I2C device ready: %s", i2c_dev->name);
-
-	/* I2C 스캔: 0x20~0x27 범위에서 PCF8574 탐지 */
-	LOG_INF("Scanning I2C bus...");
-	for (uint8_t a = 0x20; a <= 0x3F; a++) {
-		uint8_t dummy;
-		if (i2c_read(i2c_dev, &dummy, 1, a) == 0) {
-			LOG_INF("  Found device at 0x%02X", a);
-		}
-	}
-
-	ret = lcd1602_init(i2c_dev, LCD_ADDR);
-	if (ret) {
-		LOG_ERR("LCD init failed (err %d) — 주소/배선 확인", ret);
-		return ret;
-	}
-	LOG_INF("LCD 1602 initialized");
-
-	/* 1행: 고정 타이틀 */
-	lcd1602_set_cursor(i2c_dev, LCD_ADDR, 0, 0);
-	lcd1602_write_str(i2c_dev, LCD_ADDR, "nRF52840 LCD OK!");
+	printk("ADXL345 ready. 출력 시작 (주기 %d ms)\n", POLL_INTERVAL_MS);
 
 	while (1) {
-		char buf[17];
+		struct sensor_value ax, ay, az;
 
-		/* 2행: 카운터 갱신 */
-		snprintf(buf, sizeof(buf), "Count: %-9d", count++);
-		lcd1602_set_cursor(i2c_dev, LCD_ADDR, 0, 1);
-		lcd1602_write_str(i2c_dev, LCD_ADDR, buf);
+		if (sensor_sample_fetch(accel) < 0) {
+			printk("fetch error\n");
+			k_msleep(POLL_INTERVAL_MS);
+			continue;
+		}
 
-		LOG_DBG("LCD update: %s", buf);
-		k_msleep(1000);
+		sensor_channel_get(accel, SENSOR_CHAN_ACCEL_X, &ax);
+		sensor_channel_get(accel, SENSOR_CHAN_ACCEL_Y, &ay);
+		sensor_channel_get(accel, SENSOR_CHAN_ACCEL_Z, &az);
+
+		printk("X=%d.%06d  Y=%d.%06d  Z=%d.%06d m/s2\n",
+		       ax.val1, ax.val2,
+		       ay.val1, ay.val2,
+		       az.val1, az.val2);
+
+		k_msleep(POLL_INTERVAL_MS);
 	}
 
 	return 0;

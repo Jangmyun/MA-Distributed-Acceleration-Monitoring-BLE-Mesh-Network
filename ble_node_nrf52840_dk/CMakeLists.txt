@@ -9,5 +9,4 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(lcd_test)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/lcd1602.c)
+	src/main.c)
