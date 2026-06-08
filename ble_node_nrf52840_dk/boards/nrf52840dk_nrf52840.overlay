@@ -61,7 +61,6 @@
 		compatible = "adi,adxl345";
 		reg = <0x53>;
 		/* SDO → VCC 연결 시 reg = <0x1D> 로 변경 */
-		int1-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;  /* P1.08 — INT1 */
-		int2-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>; /* P1.10 — INT2 */
+		/* NCS v2.4.0 바인딩은 int-gpios 미지원 — 폴링 모드로 동작 */
 	};
 };
