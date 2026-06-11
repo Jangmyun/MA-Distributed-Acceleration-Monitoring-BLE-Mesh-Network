@@ -36,10 +36,12 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(chat, CONFIG_LOG_DEFAULT_LEVEL);
 
-#define ACCEL_NODE       DT_NODELABEL(adxl345)
-#define LCD_I2C_NODE     DT_NODELABEL(i2c0)
-#define LCD_ADDR         0x27
-#define POLL_INTERVAL_MS 1000
+#define ACCEL_NODE              DT_NODELABEL(adxl345)
+#define LCD_I2C_NODE            DT_NODELABEL(i2c0)
+#define LCD_ADDR                0x27
+#define POLL_INTERVAL_MS        200   /* 센서 샘플링 주기 (LCD 갱신 기준) */
+#define CHANGE_THRESHOLD_CENTI  5     /* 변화 감지 임계값: 0.05 m/s² */
+#define PUB_INTERVAL_MS         1000  /* BLE Mesh 전송 간격: 변화 감지 시 최대 1회/초 */
 
 /* PCF8574 핀 마스크 */
 #define LCD_RS  BIT(0)
@@ -48,6 +50,32 @@ LOG_MODULE_REGISTER(chat, CONFIG_LOG_DEFAULT_LEVEL);
 #define LCD_BL  BIT(3)
 
 static const struct device *lcd_i2c;
+
+/* ── 이벤트 기반 publish 상태 ─────────────────────────────────────────────── */
+
+static int32_t last_pub_x = INT32_MIN;
+static int32_t last_pub_y = INT32_MIN;
+static int32_t last_pub_z = INT32_MIN;
+static int64_t last_pub_ms;
+
+static inline int32_t i32_abs(int32_t v) { return v < 0 ? -v : v; }
+
+static bool accel_needs_publish(int32_t x, int32_t y, int32_t z)
+{
+	int64_t elapsed = k_uptime_get() - last_pub_ms;
+
+	/* keepalive: 변화 여부 무관하게 강제 전송 */
+	if (elapsed >= KEEPALIVE_INTERVAL_MS) {
+		return true;
+	}
+	/* 최소 전송 간격 미달 시 변화가 있어도 전송 보류 */
+	if (elapsed < MIN_PUB_INTERVAL_MS) {
+		return false;
+	}
+	return (i32_abs(x - last_pub_x) > CHANGE_THRESHOLD_CENTI ||
+		i32_abs(y - last_pub_y) > CHANGE_THRESHOLD_CENTI ||
+		i32_abs(z - last_pub_z) > CHANGE_THRESHOLD_CENTI);
+}
 
 /* ── PCF8574 / HD44780 저수준 ──────────────────────────────────────────── */
 
@@ -232,7 +260,7 @@ int main(void)
 					  : "Use nRF Mesh app");
 	k_msleep(1500);
 
-	/* ── 메인 루프: 센서 읽기 → Mesh publish → LCD 업데이트 ── */
+	/* ── 메인 루프: 센서 읽기 → 변화 감지 → Mesh publish → LCD 업데이트 ── */
 	while (1) {
 		struct sensor_value ax, ay, az;
 		char xbuf[7], ybuf[7];
@@ -250,13 +278,22 @@ int main(void)
 		sensor_channel_get(accel, SENSOR_CHAN_ACCEL_Y, &ay);
 		sensor_channel_get(accel, SENSOR_CHAN_ACCEL_Z, &az);
 
-		/* 2. BLE Mesh publish (provisioned 상태에서만 실제 전송) */
+		/* 2. 변화 감지 후 BLE Mesh publish
+		 *    - 어느 축이든 CHANGE_THRESHOLD_CENTI 초과 변화 시 즉시 전송
+		 *    - 변화 없어도 KEEPALIVE_INTERVAL_MS 마다 강제 전송 (gateway 온라인 감지용)
+		 */
 		if (bt_mesh_is_provisioned()) {
-			model_handler_publish_accel(
-				sv_to_centi(&ax),
-				sv_to_centi(&ay),
-				sv_to_centi(&az)
-			);
+			int32_t cx = sv_to_centi(&ax);
+			int32_t cy = sv_to_centi(&ay);
+			int32_t cz = sv_to_centi(&az);
+
+			if (accel_needs_publish(cx, cy, cz)) {
+				model_handler_publish_accel(cx, cy, cz);
+				last_pub_x  = cx;
+				last_pub_y  = cy;
+				last_pub_z  = cz;
+				last_pub_ms = k_uptime_get();
+			}
 		}
 
 		/* 3. LCD Line 0: 로컬 X, Y 가속도 */
