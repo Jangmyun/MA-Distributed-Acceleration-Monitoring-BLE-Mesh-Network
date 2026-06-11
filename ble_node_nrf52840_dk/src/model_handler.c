@@ -254,11 +254,10 @@ static void handle_chat_message(struct bt_mesh_chat_cli *chat,
 		remote_accel.z_centi = zi;
 		remote_accel.valid   = true;
 
-		/* Gateway UART 출력: bridge의 ACCEL:<id>:<x>,<y>,<z> 형식
-		 * 수신 순서 기반 동적 ID 사용 (A, B, D... — C는 게이트웨이 예약)
-		 */
+#if defined(CONFIG_NODE_GATEWAY)
 		printk("ACCEL:%c:%d,%d,%d\n", resolve_node_id(ctx->addr),
 		       (int)xi, (int)yi, (int)zi);
+#endif
 		return;
 	}
 

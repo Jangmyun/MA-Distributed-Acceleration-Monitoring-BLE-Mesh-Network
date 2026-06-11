@@ -26,6 +26,16 @@ config BT_MESH_CHAT_SAMPLE_PRESENCE_CACHE_SIZE
 	  Presence cache stores previously received presence of chat clients.
 	  Recommended to be as big as number of chat clients in the mesh network.
 
+config NODE_GATEWAY
+	bool "Node C: Gateway mode"
+	default n
+	help
+	  Enable gateway behaviour: periodically print own sensor data and
+	  received mesh data as ACCEL:<id>:<x>,<y>,<z> lines over UART so
+	  that gateway_bridge.py (--serial) can forward them to the WebSocket
+	  dashboard.  Flash this build only to the board that is connected to
+	  the host PC via USB.  Leave disabled for Node A and Node B.
+
 endmenu
 
 module = BT_MESH_CHAT_CLI
