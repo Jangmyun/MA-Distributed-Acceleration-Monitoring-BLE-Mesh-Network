@@ -90,9 +90,10 @@ static int32_t last_pub_y = INT32_MIN;
 static int32_t last_pub_z = INT32_MIN;
 static int64_t last_pub_ms;
 
-/* Gateway 자신의 데이터를 UART로 주기 출력하기 위한 타이머 */
+#if defined(CONFIG_NODE_GATEWAY)
 #define GW_UART_INTERVAL_MS  1000
 static int64_t last_gw_print_ms;
+#endif
 
 static inline int32_t i32_abs(int32_t v) { return v < 0 ? -v : v; }
 
@@ -326,15 +327,13 @@ int main(void)
 				last_pub_ms = k_uptime_get();
 			}
 
-			/* Gateway UART 출력: 자신의 센서 데이터를 'C'로 출력
-			 * 이 노드를 게이트웨이로 사용할 때만 의미 있음.
-			 * 일반 센서 노드에서는 출력되어도 bridge가 무시함.
-			 */
+#if defined(CONFIG_NODE_GATEWAY)
 			if ((k_uptime_get() - last_gw_print_ms) >= GW_UART_INTERVAL_MS) {
 				printk("ACCEL:C:%d,%d,%d\n",
 				       (int)cx, (int)cy, (int)cz);
 				last_gw_print_ms = k_uptime_get();
 			}
+#endif
 		}
 
 		/* 3. LCD Line 0: 로컬 X, Y 가속도 */
