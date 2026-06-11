@@ -41,8 +41,7 @@ LOG_MODULE_REGISTER(chat, CONFIG_LOG_DEFAULT_LEVEL);
 #define LCD_ADDR                0x27
 #define POLL_INTERVAL_MS        200   /* 센서 샘플링 주기 (LCD 갱신 기준) */
 #define CHANGE_THRESHOLD_CENTI  5     /* 변화 감지 임계값: 0.05 m/s² */
-#define MIN_PUB_INTERVAL_MS     1000  /* 변화 감지 시에도 최소 전송 간격 */
-#define KEEPALIVE_INTERVAL_MS   5000  /* 변화 없어도 강제 publish 주기 */
+#define PUB_INTERVAL_MS         1000  /* BLE Mesh 전송 간격: 변화 감지 시 최대 1회/초 */
 
 /* PCF8574 핀 마스크 */
 #define LCD_RS  BIT(0)
