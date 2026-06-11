@@ -62,14 +62,7 @@ static inline int32_t i32_abs(int32_t v) { return v < 0 ? -v : v; }
 
 static bool accel_needs_publish(int32_t x, int32_t y, int32_t z)
 {
-	int64_t elapsed = k_uptime_get() - last_pub_ms;
-
-	/* keepalive: 변화 여부 무관하게 강제 전송 */
-	if (elapsed >= KEEPALIVE_INTERVAL_MS) {
-		return true;
-	}
-	/* 최소 전송 간격 미달 시 변화가 있어도 전송 보류 */
-	if (elapsed < MIN_PUB_INTERVAL_MS) {
+	if ((k_uptime_get() - last_pub_ms) < PUB_INTERVAL_MS) {
 		return false;
 	}
 	return (i32_abs(x - last_pub_x) > CHANGE_THRESHOLD_CENTI ||
