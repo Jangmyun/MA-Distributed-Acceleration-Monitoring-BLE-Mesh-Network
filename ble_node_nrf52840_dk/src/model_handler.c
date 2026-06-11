@@ -212,6 +212,16 @@ static void handle_chat_message(struct bt_mesh_chat_cli *chat,
 		remote_accel.y_centi = yi;
 		remote_accel.z_centi = zi;
 		remote_accel.valid   = true;
+
+		/* Gateway UART 출력: bridge의 ACCEL:<id>:<x>,<y>,<z> 형식
+		 * 주소 하위 바이트로 노드 ID 결정 (0x01→A, 0x02→B, 기타→X)
+		 */
+		{
+			char nid = (ctx->addr == 0x0001) ? 'A' :
+				   (ctx->addr == 0x0002) ? 'B' : 'X';
+			printk("ACCEL:%c:%d,%d,%d\n", nid,
+			       (int)xi, (int)yi, (int)zi);
+		}
 		return;
 	}
 
