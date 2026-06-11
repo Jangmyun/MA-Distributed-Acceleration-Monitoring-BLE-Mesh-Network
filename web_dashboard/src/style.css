@@ -9,10 +9,10 @@
   --text-main:  #e6edf3;
   --text-muted: #8b949e;
 
-  --col-normal:   #3fb950;
-  --col-warning:  #d29922;
-  --col-critical: #f85149;
-  --col-accent:   #58a6ff;
+  --col-online:  #3fb950;
+  --col-offline: #484f58;
+  --col-accent:  #58a6ff;
+  --col-warn:    #d29922;
 
   --panel-gap: 8px;
   --header-h:  52px;
@@ -36,7 +36,7 @@ html, body, #app {
 #header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 16px;
   height: var(--header-h);
   background: var(--bg-header);
@@ -57,22 +57,31 @@ html, body, #app {
   font-size: 11px;
 }
 
-.scenario-btn {
-  padding: 5px 12px;
+/* ── Node Selector Buttons A / B / C ── */
+.node-btn {
+  padding: 5px 14px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-panel);
-  color: var(--text-main);
+  color: var(--text-muted);
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.scenario-btn:hover           { background: #21262d; border-color: var(--col-accent); }
-.scenario-btn.active-normal   { border-color: var(--col-normal);   color: var(--col-normal);   }
-.scenario-btn.active-warning  { border-color: var(--col-warning);  color: var(--col-warning);  }
-.scenario-btn.active-critical { border-color: var(--col-critical); color: var(--col-critical); }
+.node-btn:hover {
+  background: #21262d;
+  border-color: var(--col-accent);
+  color: var(--text-main);
+}
+.node-btn.active {
+  border-color: var(--col-accent);
+  color: var(--col-accent);
+  background: rgba(88, 166, 255, 0.08);
+}
 
+/* ── WS Status ── */
 #ws-status {
   margin-left: auto;
   display: flex;
@@ -84,26 +93,16 @@ html, body, #app {
 #ws-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: var(--col-critical);
+  background: #f85149;
   transition: background 0.3s;
 }
-#ws-dot.connected { background: var(--col-normal); }
+#ws-dot.connected { background: var(--col-online); }
 
-#rpm-display {
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: #0d1117;
-  border: 1px solid var(--border);
-  font-size: 12px;
-  white-space: nowrap;
-}
-#rpm-display span { color: var(--col-accent); font-weight: 700; }
-
-/* ── 4-Panel Grid ── */
+/* ── 2-Panel Grid ── */
 #main {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 1fr;
   gap: var(--panel-gap);
   padding: var(--panel-gap);
   flex: 1;
@@ -154,7 +153,7 @@ html, body, #app {
   min-height: 0;
 }
 
-/* ── Three.js 패널 ── */
+/* ── Three.js Panel ── */
 .motor-wrap {
   padding: 0;
   align-items: stretch;
@@ -167,42 +166,47 @@ html, body, #app {
   height: 100% !important;
 }
 
-#severity-overlay {
+/* ── Angle Overlay (top-left of motor panel) ── */
+#angle-overlay {
   position: absolute;
-  top: 8px; left: 8px;
+  top: 10px;
+  left: 10px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(48, 54, 61, 0.8);
+  pointer-events: none;
+  min-width: 140px;
+}
+
+#angle-node-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--col-accent);
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.angle-row {
+  display: flex;
+  align-items: baseline;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(4px);
-  font-size: 11px;
-  font-weight: 600;
-  pointer-events: none;
+  font-size: 12px;
 }
 
-#severity-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--col-normal);
-  transition: background 0.3s;
-}
-
-#severity-text {
-  color: var(--col-normal);
-  transition: color 0.3s;
-}
-
-#target-rpm-overlay {
-  position: absolute;
-  bottom: 8px; right: 8px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(4px);
-  font-size: 11px;
+.angle-key {
   color: var(--text-muted);
-  pointer-events: none;
+  font-size: 10px;
+  width: 32px;
 }
-#target-rpm-overlay span { color: var(--col-accent); }
+
+.angle-val {
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}

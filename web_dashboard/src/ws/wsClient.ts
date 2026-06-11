@@ -1,10 +1,9 @@
-import type { DashboardState, Severity } from '../types';
+import type { DashboardState } from '../types';
 
 /* ─────────────────────────────────────────────────────────
    wsClient  —  WebSocket client
    Connects to gateway_bridge.py (:8765), auto-reconnects,
    and exposes event callbacks.
-   W3: D3 panel update logic will be added to the onState callback.
 ───────────────────────────────────────────────────────── */
 
 const WS_URL        = 'ws://localhost:8765';
@@ -22,20 +21,6 @@ export class WsClient {
     private readonly onStatus: WsStatusCallback,
   ) {
     this._connect();
-  }
-
-  /** Browser → bridge: scenario injection (PRD §4.4) */
-  sendScenario(scenario: string): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'inject_scenario', scenario }));
-    }
-  }
-
-  /** Browser → bridge: threshold adjustment (PRD §5.2 Threshold Control) */
-  sendThreshold(params: Record<string, number>): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'set_threshold', ...params }));
-    }
   }
 
   dispose(): void {
@@ -78,13 +63,4 @@ export class WsClient {
   private _scheduleReconnect(): void {
     if (!this.closing) setTimeout(() => this._connect(), RECONNECT_MS);
   }
-}
-
-/** Returns the worst severity across all nodes (PRD §4.2 getWorstSeverity) */
-export function getWorstSeverity(nodes: DashboardState['nodes']): Severity {
-  const rank: Record<Severity, number> = { normal: 0, warning: 1, critical: 2 };
-  return nodes.reduce<Severity>(
-    (worst, n) => (rank[n.severity] > rank[worst] ? n.severity : worst),
-    'normal',
-  );
 }

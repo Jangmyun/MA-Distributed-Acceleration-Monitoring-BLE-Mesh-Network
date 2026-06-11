@@ -1,18 +1,16 @@
 /* ─────────────────────────────────────────────
-   Shared type definitions (PRD §5.1 / §5.4 payload spec)
+   Shared type definitions  (PRD §4.2 / §4.3 payload spec)
 ───────────────────────────────────────────── */
-
-export type Severity = 'normal' | 'warning' | 'critical';
 
 /** State of a single BLE Mesh node (inside WebSocket payload nodes[]) */
 export interface NodeState {
-  id: string;           // 'A' | 'B' | 'C'
-  severity: Severity;
-  dom_freq: number;     // Dominant frequency (Hz)
-  sfm: number;          // Spectral Flatness Measure
-  rms_dev: number;      // RMS Spectral Deviation
-  top8_bins: number[];  // Top-8 FFT bin amplitudes
-  rssi: number;         // dBm (0 for the Gateway node)
+  id: string;       // 'A' | 'B' | 'C'
+  x: number;        // centiunits (val × 100 = m/s²)
+  y: number;
+  z: number;
+  roll: number;     // degrees — atan2(y, z)
+  pitch: number;    // degrees — atan2(-x, √(y²+z²))
+  rssi: number;     // dBm  (0 for the Gateway node itself)
   online: boolean;
 }
 
@@ -20,18 +18,12 @@ export interface NodeState {
 export interface MeshLink {
   src: string;
   dst: string;
-  rssi: number;
+  rssi: number;   // dBm
 }
 
-/** Full WebSocket payload (PRD §5.4) */
+/** Full WebSocket payload (PRD §4.3) */
 export interface DashboardState {
   nodes: NodeState[];
   links: MeshLink[];
-  ts: number;           // Unix timestamp
-}
-
-/** Control command sent to the Three.js scene */
-export interface MotorCommand {
-  targetRPM: number;
-  severity: Severity;
+  ts: number;       // Unix timestamp
 }
