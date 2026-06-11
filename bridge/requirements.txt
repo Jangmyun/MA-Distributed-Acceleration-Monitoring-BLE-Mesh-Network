@@ -1,0 +1,8 @@
+# WebSocket 서버
+websockets>=12.0
+
+# UART / Serial 입력 (--serial 모드)
+pyserial>=3.5
+
+# BLE GATT 입력 (--addr 모드, Node C GATT Server 구현 후 사용)
+bleak==0.21.1

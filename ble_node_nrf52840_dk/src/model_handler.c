@@ -25,6 +25,47 @@ static const struct shell *chat_shell;
 /* ── 원격 노드 가속도 데이터 저장소 ─────────────────────────────────────── */
 static struct model_handler_remote_accel remote_accel;
 
+/* ── 동적 노드 ID 매핑 ────────────────────────────────────────────────────
+ * 수신 순서대로 A, B, D, E... 자동 배정. 'C'는 게이트웨이용으로 예약.
+ * 노드 수에 관계없이 2개 이상 연결 시 자동 동작.
+ */
+#define NODE_ID_MAX  8
+
+struct node_id_entry {
+	uint16_t addr;
+	char     id;
+};
+
+static struct node_id_entry node_id_table[NODE_ID_MAX];
+static uint8_t              node_id_count;
+
+static char resolve_node_id(uint16_t addr)
+{
+	/* 기존 테이블에서 탐색 */
+	for (uint8_t i = 0; i < node_id_count; i++) {
+		if (node_id_table[i].addr == addr) {
+			return node_id_table[i].id;
+		}
+	}
+
+	/* 신규 노드: 다음 알파벳 배정 (C 건너뜀 — 게이트웨이 예약) */
+	if (node_id_count >= NODE_ID_MAX) {
+		return '?';
+	}
+
+	char next_id = 'A' + node_id_count;
+	if (next_id >= 'C') {
+		next_id++;   /* C → D, D → E ... */
+	}
+
+	node_id_table[node_id_count].addr = addr;
+	node_id_table[node_id_count].id   = next_id;
+	node_id_count++;
+
+	LOG_INF("Node 0x%04X → ID '%c'", addr, next_id);
+	return next_id;
+}
+
 /******************************************************************************/
 /*************************** Health server setup ******************************/
 /******************************************************************************/
@@ -212,6 +253,12 @@ static void handle_chat_message(struct bt_mesh_chat_cli *chat,
 		remote_accel.y_centi = yi;
 		remote_accel.z_centi = zi;
 		remote_accel.valid   = true;
+
+		/* Gateway UART 출력: bridge의 ACCEL:<id>:<x>,<y>,<z> 형식
+		 * 수신 순서 기반 동적 ID 사용 (A, B, D... — C는 게이트웨이 예약)
+		 */
+		printk("ACCEL:%c:%d,%d,%d\n", resolve_node_id(ctx->addr),
+		       (int)xi, (int)yi, (int)zi);
 		return;
 	}
 

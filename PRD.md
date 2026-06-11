@@ -35,17 +35,20 @@ Three.js 3D 모터 시뮬레이터가 센서 각도를 실시간으로 추종한
 ```
 [Node A]──BLE Mesh──[Node B: Relay]──BLE Mesh──[Node C: GW]
 ADXL345              ADXL345                   ADXL345
-각도 계산 + publish   각도 계산 + publish        집계 + GATT Notify
-     │
-     │  BLE GATT (Custom Notify)
-     ▼
-gateway_bridge.py  →  WebSocket (:8765)
-     │
-     │  ws://localhost:8765
-     ▼
-웹 대시보드 (index.html)
-  ├─ Three.js: 3D 모터 — 센서 각도 추종
-  └─ D3.js:   BLE Mesh 토폴로지 그래프
+이벤트 publish        이벤트 publish + relay     UART 출력
+                                                  │
+          BLE GATT Notify (미구현, ❌)             │  UART Serial (권장, ✅)
+          또는                                     │  ACCEL:A/B/C:x,y,z
+          ──────────────────────────────────────────┘
+                                                  │
+                                                  ▼
+                                     gateway_bridge.py  →  WebSocket (:8765)
+                                             │
+                                             │  ws://localhost:8765
+                                             ▼
+                                     웹 대시보드 (web_dashboard/)
+                                       ├─ Three.js: 3D 모터 — 센서 각도 추종
+                                       └─ D3.js:   BLE Mesh 토폴로지 그래프
 ```
 
 ### 2.1 하드웨어
@@ -60,9 +63,42 @@ gateway_bridge.py  →  WebSocket (:8765)
 
 | 노드 | 역할 |
 |------|------|
-| Node A | Sensor + BLE Mesh publish |
+| Node A | Sensor + BLE Mesh publish (이벤트 기반, 최대 1Hz) |
 | Node B | Sensor + BLE Mesh publish + Relay |
-| Node C | Sensor + Mesh 집계 + GATT Server |
+| Node C | Sensor + Mesh 집계 + UART 출력 (`ACCEL:id:x,y,z`) → bridge fallback |
+
+> Node C GATT Server는 미구현 상태. 현재 UART Serial을 통해 bridge로 데이터 전달한다.
+
+### 2.3 디렉토리 구조
+
+```
+project-root/
+├── .claude/
+│   ├── CLAUDE.md
+│   ├── skills/
+│   ├── hooks/
+│   └── settings.json
+├── ble_node_nrf52840_dk/          ← 단일 펌웨어 (Node A/B/C 공통 빌드)
+│   ├── src/
+│   │   ├── main.c                 ← 센서 폴링 + 이벤트 publish + LCD + UART fallback
+│   │   ├── model_handler.c        ← Chat CLI Vendor Model + ACCEL 파싱 + UART 출력
+│   │   ├── lcd1602.c / lcd1602.h
+│   │   └── chat_cli.c
+│   ├── prj.conf
+│   └── boards/nrf52840dk_nrf52840.overlay
+├── bridge/
+│   ├── gateway_bridge.py          ← --serial / --addr / --mock 3가지 모드
+│   └── requirements.txt
+└── web_dashboard/
+    ├── index.html
+    ├── src/
+    │   ├── main.ts                ← 2패널 레이아웃 + 노드 선택 버튼
+    │   ├── types.ts               ← NodeState / MeshLink / DashboardState 타입
+    │   ├── motor/MotorSim.ts      ← Three.js 3D 모터 + setAngle() + lerp
+    │   ├── panels/topology.ts     ← D3.js Force Graph
+    │   └── ws/wsClient.ts         ← WebSocket 클라이언트 (자동 재연결)
+    └── package.json
+```
 
 ---
 
@@ -91,9 +127,28 @@ Chat CLI Vendor Model 텍스트 메시지:
 예) "A:123,-234,981"  →  x=1.23 m/s², y=-2.34 m/s², z=9.81 m/s²
 ```
 
-### 4.2 GATT Notify 페이로드 (Node C → PC)
+### 4.2 Node C → PC 인터페이스
 
-Node C가 집계 후 JSON으로 직렬화하여 Notify:
+**현재 구현 (UART fallback, ✅):**
+
+Node C 펌웨어가 UART로 아래 형식을 출력한다. bridge가 두 형식을 모두 파싱한다.
+
+```
+# 형식 1 — 단순 라인 (현재 펌웨어 출력)
+ACCEL:C:10,-20,975     ← 자기 자신 (GW_UART_INTERVAL_MS=1000ms마다)
+ACCEL:A:123,-234,981   ← Node A 수신 시 (model_handler handle_chat_message)
+ACCEL:B:50,100,960     ← Node B 수신 시
+
+# 형식 2 — JSON 한 줄 (GATT Server 구현 후 또는 펌웨어 업그레이드 시)
+{"nodes":[...],"links":[...]}
+```
+
+노드 주소 → ID 매핑 (펌웨어 하드코딩):
+- Unicast 0x0001 → A
+- Unicast 0x0002 → B
+- 자기 자신 → C
+
+**미구현 (GATT Server, ❌):**
 
 ```json
 {
@@ -130,20 +185,23 @@ Node C가 집계 후 JSON으로 직렬화하여 Notify:
 
 ## 5. 컴포넌트 명세
 
-### 5.1 펌웨어 (Node A / B 공통, `ble_node_nrf52840_dk/`)
+### 5.1 펌웨어 (`ble_node_nrf52840_dk/` — A/B/C 공통 단일 빌드)
 
-**현재 구현 완료:**
-- ADXL345 I2C 폴링 (1000ms 주기)
-- Chat CLI Vendor Model `"A:x,y,z"` BLE Mesh publish / 수신
+**구현 완료:**
+- ADXL345 I2C 폴링 (200ms 주기, `POLL_INTERVAL_MS=200`)
+- 이벤트 기반 BLE Mesh publish: 어느 축이든 0.05 m/s² 초과 변화 시 즉시 전송, 최대 1Hz (`PUB_INTERVAL_MS=1000`)
+- Chat CLI Vendor Model `"A:x_centi,y_centi,z_centi"` BLE Mesh publish / 수신
 - LCD 1602: Line0 로컬 X/Y, Line1 원격 노드 주소 + X
 - OOB 프로비저닝 + Flash 설정 복원
-- `CONFIG_BT_MESH_RELAY=y` (Node B 역할)
-- `CONFIG_BT_MESH_RX_SEG_MSG_COUNT=4` (SAR 버퍼 안정화)
+- `CONFIG_BT_MESH_RELAY=y`, `CONFIG_BT_MESH_GATT_PROXY=y`
+- SAR 버퍼 안정화: `TX/RX_SEG_MSG_COUNT=4`, `TX/RX_SEG_MAX=9`, `ADV_BUF_COUNT=24`
+- **Gateway UART fallback (Node C용):**
+  - 자기 자신 데이터를 `ACCEL:C:x,y,z` 형식으로 1초마다 UART 출력
+  - 수신 메시지를 `ACCEL:A/B:x,y,z` 형식으로 UART 출력 (0x0001→A, 0x0002→B)
 
-**추가 구현 필요:**
-- Node C: GATT Server (Spectrum Aggregation Notify Characteristic)
-  - 수신한 모든 노드의 최신 x/y/z + RSSI를 JSON으로 직렬화 → Notify
-  - 15초 이상 미수신 노드는 `"online": false` 처리
+**미구현:**
+- Node C: GATT Server (`bfbc1234-...` Service, `bfbc1235-...` Notify Characteristic)
+  - 현재 UART fallback으로 대체 운용 중
 
 ### 5.2 LCD 표시
 
@@ -155,26 +213,25 @@ Line 1: R:0002 X +01.23
 미프로비전: `Mesh: no prov  `
 수신 대기:  `Mesh: waiting..`
 
-### 5.3 Python 브릿지 (`bridge/gateway_bridge.py`)
+### 5.3 Python 브릿지 (`bridge/gateway_bridge.py`) ✅ 구현 완료
 
-```python
-async def main():
-    ble   = await BleakClient(GATEWAY_ADDR).connect()
-    ws_sv = await websockets.serve(ws_handler, '0.0.0.0', 8765)
-
-    async def on_notify(_, data):
-        state = json.loads(data)
-        for node in state['nodes']:
-            x, y, z = node['x'] / 100, node['y'] / 100, node['z'] / 100
-            node['roll']  = math.degrees(math.atan2(y, z))
-            node['pitch'] = math.degrees(math.atan2(-x, math.sqrt(y**2 + z**2)))
-        await ws_broadcast(json.dumps(state))
-
-    ble.start_notify(NOTIFY_CHAR_UUID, on_notify)
-    await asyncio.gather(ws_sv.wait_closed())
+**입력 소스 (3가지 상호 배타적):**
+```bash
+python gateway_bridge.py --serial /dev/cu.usbmodemXXXX   # UART (권장)
+python gateway_bridge.py --addr AA:BB:CC:DD:EE:FF         # BLE GATT (Node C GATT 구현 후)
+python gateway_bridge.py --mock                           # 더미 데이터 (하드웨어 없이 테스트)
 ```
 
-의존성: `bleak==0.21`, `websockets` (`pip install -r requirements.txt`)
+**핵심 기능:**
+- Roll/Pitch 계산 (`calc_angles()`: centiunits → degrees)
+- 이동평균 필터 (n=3, `MovingAverage` 클래스)
+- 15초 미수신 노드 `online: false` 처리 (`NodeTracker`)
+- 신규 WS 연결 시 마지막 상태 즉시 전송 (대시보드 초기 렌더링)
+- BLE 자동 재연결 (`BLE_RECONNECT_DELAY=3.0s`)
+- UART: JSON 한 줄 + `ACCEL:id:x,y,z` 단순 라인 두 형식 모두 지원
+- Mock: Node A 좌우 기울기 ±30° / Node B 앞뒤 기울기 ±20° sinusoidal
+
+의존성: `bleak==0.21.1`, `websockets>=12.0`, `pyserial>=3.5` (`pip install -r requirements.txt`)
 
 ### 5.4 웹 대시보드 (`web_dashboard/`)
 
@@ -192,21 +249,23 @@ async def main():
 - 상단 바: 노드 선택 버튼 A / B / C → 해당 노드 각도 추종
 
 **WebSocket 상태:**
-- 연결 중: 연결 상태 인디케이터 표시
+- 연결 중: 연결 상태 인디케이터 (dot + 텍스트) 표시
 - 수신 시: 선택 노드의 roll/pitch를 `motorSim.setAngle()`로 전달, 토폴로지 갱신
+- 신규 접속 시 브릿지가 마지막 상태를 즉시 전송 (초기 렌더링 보장)
+- 5초마다 자동 재연결
 
 ---
 
-## 6. 개발 일정 (잔여)
+## 6. 개발 일정
 
-| 우선순위 | 작업 | 담당 |
-|----------|------|------|
-| 1 | Node C GATT Server — 집계 JSON Notify Characteristic 구현 | 펌웨어 |
-| 2 | `bridge/gateway_bridge.py` — BLE GATT 수신 + Roll/Pitch 계산 + WS 브로드캐스트 | 브릿지 |
-| 3 | `MotorSim.ts` — `setAngle(roll, pitch)` 추가, lerp 기울기 추종 | 웹 |
-| 4 | `wsClient.ts` / `main.ts` — 노드 선택 버튼 + `setAngle()` 연동 | 웹 |
-| 5 | `topology.ts` — D3.js Force Graph (노드 온라인 상태 + RSSI 링크) | 웹 |
-| 6 | 3노드 실물 End-to-End 검증 | 통합 |
+| 우선순위 | 작업 | 담당 | 상태 |
+|----------|------|------|------|
+| 1 | Node C GATT Server — 집계 JSON Notify Characteristic 구현 | 펌웨어 | ❌ (UART fallback으로 대체) |
+| 2 | `bridge/gateway_bridge.py` — BLE GATT/UART 수신 + Roll/Pitch + WS | 브릿지 | ✅ |
+| 3 | `MotorSim.ts` — `setAngle(roll, pitch)`, lerp 기울기 추종 | 웹 | ✅ |
+| 4 | `wsClient.ts` / `main.ts` — 노드 선택 버튼 + `setAngle()` 연동 | 웹 | ✅ |
+| 5 | `topology.ts` — D3.js Force Graph (노드 온라인 상태 + RSSI 링크) | 웹 | ✅ |
+| 6 | 3노드 실물 End-to-End 검증 | 통합 | ❌ |
 
 ---
 
@@ -223,12 +282,13 @@ async def main():
 
 ## 8. 위험 요소 및 대응
 
-| 위험 | 대응책 |
-|------|--------|
-| Node C GATT 구현 지연 | 브릿지가 Node C UART 출력을 직접 파싱하는 fallback |
-| BLE GATT 연결 지연 > 200ms | 데모 허용 범위로 완화; 발표에서 지연 명시 |
-| 각도 노이즈 (정적 가속도 외 진동) | 브릿지에서 단순 이동평균(n=3) 적용 |
-| bleak macOS BLE 권한 오류 | `! bleak` 설치 및 Bluetooth 권한 사전 확인 |
+| 위험 | 대응책 | 상태 |
+|------|--------|------|
+| Node C GATT 구현 지연 | 브릿지 UART fallback (`--serial`) | ✅ 대응 완료 |
+| BLE GATT 연결 지연 > 200ms | 데모 허용 범위로 완화; 발표에서 지연 명시 | — |
+| 각도 노이즈 (정적 가속도 외 진동) | 브릿지 이동평균 필터 (n=3) | ✅ 구현 완료 |
+| bleak macOS BLE 권한 오류 | `pip install bleak` 및 Bluetooth 권한 사전 확인 | — |
+| UART 노드 ID 오매핑 | 주소 0x0001→A, 0x0002→B 하드코딩 확인 필요 | ⚠️ 프로비저닝 주소 의존 |
 
 ---
 
@@ -238,15 +298,18 @@ async def main():
 
 | 컴포넌트 | 항목 | 상태 |
 |----------|------|------|
-| 펌웨어 | ADXL345 I2C 폴링 + BLE Mesh publish/수신 | ✅ |
+| 펌웨어 | ADXL345 I2C 폴링 (200ms) + 이벤트 기반 BLE Mesh publish | ✅ |
 | 펌웨어 | LCD 1602 로컬·원격 표시 | ✅ |
 | 펌웨어 | OOB 프로비저닝 + Flash 복원 | ✅ |
-| 펌웨어 | SAR RX 버퍼 안정화 (`RX_SEG_MSG_COUNT=4`) | ✅ |
+| 펌웨어 | SAR 버퍼 안정화 (`TX/RX_SEG_MSG_COUNT=4`, `ADV_BUF_COUNT=24`) | ✅ |
+| 펌웨어 | Gateway UART fallback (`ACCEL:id:x,y,z` 출력) | ✅ |
 | 펌웨어 | Node C GATT Server (집계 Notify) | ❌ |
-| 브릿지 | `gateway_bridge.py` (BLE → WS + Roll/Pitch) | ❌ |
-| 웹 | Three.js 3D 모터 (씬·회전·severity 시각) | ✅ |
-| 웹 | WebSocket 클라이언트 (`wsClient.ts`) | ✅ |
-| 웹 | 4패널 레이아웃 + 시나리오 버튼 (`main.ts`) | 🔧 노드 선택 버튼 교체 필요 |
-| 웹 | Three.js `setAngle()` 각도 추종 | ❌ |
-| 웹 | D3.js 토폴로지 (`topology.ts`) | ❌ |
+| 브릿지 | `gateway_bridge.py` UART/BLE/Mock + Roll/Pitch + WS | ✅ |
+| 브릿지 | 이동평균 필터 (n=3), 오프라인 타임아웃 (15s) | ✅ |
+| 웹 | Three.js 3D 모터 (`MotorSim.ts`) | ✅ |
+| 웹 | Three.js `setAngle(roll, pitch)` lerp 각도 추종 | ✅ |
+| 웹 | WebSocket 클라이언트 `wsClient.ts` (자동 재연결) | ✅ |
+| 웹 | 2패널 레이아웃 + 노드 선택 버튼 A/B/C (`main.ts`) | ✅ |
+| 웹 | D3.js 토폴로지 — 노드 온라인/오프라인 + RSSI 링크 | ✅ |
 | 웹 | D3.js 스펙트럼 / 타임라인 패널 | 제거 (범위 축소) |
+| 통합 | 3노드 실물 End-to-End 검증 | ❌ |
